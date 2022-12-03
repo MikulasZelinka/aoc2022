@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashSet};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -186,9 +186,64 @@ fn p02(part_two: bool) {
     }
 }
 
+fn p03(part_two: bool) {
+    let mut priorities: u32 = 0;
+    let mut options: HashSet<u8> = HashSet::new();
+
+    fn get_priority(c: u8) -> u32 {
+        let mut priority: u8 = 1;
+        if b'a' <= c {
+            priority += c - b'a';
+        } else {
+            priority += c - b'A' + 26;
+        }
+        priority as u32
+    }
+
+    if let Ok(lines) = read_lines("assets/03.txt") {
+        for line in lines {
+            if let Ok(line) = line {
+                if line.is_empty() {
+                    continue;
+                }
+
+                if part_two {
+                    let new_candidates: HashSet<u8> = HashSet::from_iter(line.bytes());
+
+                    if options.is_empty() {
+                        options = new_candidates;
+                    } else {
+                        options.retain(|x| new_candidates.contains(x));
+                    }
+
+                    if options.len() == 1 {
+                        priorities += get_priority(*options.iter().next().unwrap());
+                        options.clear();
+                    }
+                } else {
+                    let (left, right) = line.split_at(line.len() / 2);
+                    let left: HashSet<u8> = HashSet::from_iter(left.bytes());
+
+                    for c in right.bytes() {
+                        if left.contains(&c) {
+                            priorities += get_priority(c);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        println!("{}", priorities);
+    } else {
+        println!("error reading file");
+    }
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p03(true);
+    p03(false);
     p02(true);
     p02(false);
     p01_2();
