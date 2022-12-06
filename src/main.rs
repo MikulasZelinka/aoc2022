@@ -343,9 +343,32 @@ fn p05(part_two: bool) {
     }
 }
 
+fn p06(part_two: bool) {
+    if let Ok(mut lines) = read_lines("assets/06.txt") {
+        // BWHY can't we use '?' instead of 'unwrap' here
+        let line = lines.next().unwrap().unwrap();
+        let mut bytes = line.bytes();
+        let window_size: usize = if part_two { 14 } else { 4 };
+        let mut window: VecDeque<u8> = VecDeque::new();
+        for _ in 0..window_size {
+            window.push_back(bytes.next().unwrap());
+        }
+        for (i, c) in bytes.enumerate() {
+            if HashSet::<&u8>::from_iter(window.iter()).len() == window_size {
+                println!("{}", i + window_size);
+                return;
+            }
+            window.pop_front();
+            window.push_back(c);
+        }
+    }
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p06(true);
+    p06(false);
     p05(true);
     p05(false);
     p04(true);
