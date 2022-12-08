@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashSet, VecDeque};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use strum::IntoEnumIterator;
@@ -364,9 +364,80 @@ fn p06(part_two: bool) {
     }
 }
 
+fn p07(part_two: bool) {
+    let mut path: PathBuf = PathBuf::new();
+    let mut sizes: HashMap<PathBuf, u32> = HashMap::new();
+
+    if let Ok(lines) = read_lines("assets/07.txt") {
+        for line in lines {
+            if let Ok(line) = line {
+                let l = line.as_str();
+                match l {
+                    "$ cd /" => {
+                        path.clear();
+                        path.push("/");
+                    }
+                    "$ cd .." => {
+                        path.pop();
+                    }
+                    line if line.starts_with("$ cd ") => path.push(&line[5..]),
+
+                    line if line.chars().next().unwrap().is_numeric() => {
+                        let size: u32 = line.split(' ').next().unwrap().parse().unwrap();
+
+                        let mut tmp_path = path.clone();
+
+                        loop {
+                            let last_size = match sizes.get(&tmp_path) {
+                                None => 0,
+                                Some(&v) => v,
+                            };
+                            sizes.insert(tmp_path.clone(), last_size + size);
+
+                            if tmp_path.parent().is_none() {
+                                break;
+                            }
+                            tmp_path.pop();
+                        }
+                    }
+
+                    _ => (),
+                }
+            }
+        }
+
+        // println!("{:?}", sizes);
+
+        if part_two {
+            const TOTAL: u32 = 70000000;
+            const REQUIRED: u32 = 30000000;
+
+            let used = sizes.get(Path::new("/")).unwrap();
+            let unused = TOTAL - used;
+
+            let min_to_free_up = REQUIRED - unused;
+
+            println!(
+                "{}",
+                sizes
+                    .into_values()
+                    .filter(|x| x > &min_to_free_up)
+                    .min()
+                    .unwrap()
+            );
+        } else {
+            println!(
+                "{}",
+                sizes.into_values().filter(|x| x < &100_000).sum::<u32>()
+            )
+        }
+    }
+}
 fn main() {
     println!("Hello, advent!");
 
+    p07(true);
+    p07(false);
     p06(true);
     p06(false);
     p05(true);
