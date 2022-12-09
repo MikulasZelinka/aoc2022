@@ -561,13 +561,13 @@ fn p08() {
     }
 }
 
-fn p09() {
+fn p09(length: usize) {
     if let Ok(lines) = read_lines("assets/09.txt") {
         let mut visited: HashSet<(i32, i32)> = HashSet::new();
 
-        let (mut head_x, mut head_y) = (0, 0);
-        let (mut tail_x, mut tail_y) = (0, 0);
-        visited.insert((tail_x, tail_y));
+        let mut knots = vec![(0i32, 0i32); length];
+
+        visited.insert(knots[0]);
 
         for line in lines {
             if let Ok(line) = line {
@@ -581,35 +581,41 @@ fn p09() {
 
                 for _ in 0..steps {
                     match dir {
-                        "R" => head_x += 1,
-                        "L" => head_x -= 1,
-                        "U" => head_y += 1,
-                        "D" => head_y -= 1,
+                        "R" => knots[0].0 += 1,
+                        "L" => knots[0].0 -= 1,
+                        "U" => knots[0].1 += 1,
+                        "D" => knots[0].1 -= 1,
                         _ => {}
                     }
 
-                    let (mut diff_x, mut diff_y) = (0, 0);
-                    if (tail_x + 1 < head_x) || (tail_x < head_x && ((tail_y - head_y).abs() >= 2))
-                    {
-                        diff_x += 1;
-                    } else if (tail_x - 1 > head_x)
-                        || (tail_x > head_x && ((tail_y - head_y).abs() >= 2))
-                    {
-                        diff_x -= 1;
-                    }
-                    if (tail_y + 1 < head_y) || (tail_y < head_y && ((tail_x - head_x).abs() >= 2))
-                    {
-                        diff_y += 1;
-                    } else if (tail_y - 1 > head_y)
-                        || (tail_y > head_y && ((tail_x - head_x).abs() >= 2))
-                    {
-                        diff_y -= 1;
+                    for i in 0..length - 1 {
+                        let j = i + 1;
+
+                        let (mut diff_x, mut diff_y) = (0, 0);
+                        if (knots[j].0 + 1 < knots[i].0)
+                            || (knots[j].0 < knots[i].0 && ((knots[j].1 - knots[i].1).abs() >= 2))
+                        {
+                            diff_x += 1;
+                        } else if (knots[j].0 - 1 > knots[i].0)
+                            || (knots[j].0 > knots[i].0 && ((knots[j].1 - knots[i].1).abs() >= 2))
+                        {
+                            diff_x -= 1;
+                        }
+                        if (knots[j].1 + 1 < knots[i].1)
+                            || (knots[j].1 < knots[i].1 && ((knots[j].0 - knots[i].0).abs() >= 2))
+                        {
+                            diff_y += 1;
+                        } else if (knots[j].1 - 1 > knots[i].1)
+                            || (knots[j].1 > knots[i].1 && ((knots[j].0 - knots[i].0).abs() >= 2))
+                        {
+                            diff_y -= 1;
+                        }
+
+                        knots[j].0 += diff_x;
+                        knots[j].1 += diff_y;
                     }
 
-                    tail_x += diff_x;
-                    tail_y += diff_y;
-
-                    visited.insert((tail_x, tail_y));
+                    visited.insert(knots[length - 1]);
                 }
             }
         }
@@ -619,7 +625,8 @@ fn p09() {
 fn main() {
     println!("Hello, advent!");
 
-    p09();
+    p09(10);
+    p09(2);
     p08();
     p07(true);
     p07(false);
