@@ -433,9 +433,137 @@ fn p07(part_two: bool) {
         }
     }
 }
+
+fn p08() {
+    let mut grid: Vec<Vec<u8>> = vec![];
+
+    fn walk_in_direction<I, J>(
+        grid: &Vec<Vec<u8>>,
+        outer: I,
+        inner: J,
+        num_rows: usize,
+        num_cols: usize,
+        cols_first: bool,
+    ) -> (Vec<Vec<u8>>, Vec<Vec<usize>>)
+    where
+        I: IntoIterator<Item = usize>,
+        // I: Clone,
+        // J: IntoIterator<Item = usize>,
+        J: Iterator<Item = usize>,
+        J: Clone,
+    {
+        let mut outside_view = vec![vec![b'0' - 1; num_cols]; num_rows];
+        let mut inside_view = vec![vec![0usize; num_cols]; num_rows];
+
+        for r in outer {
+            let mut max: u8 = b'0' - 1;
+            let mut last_seen_x_or_higher = [0usize; 10];
+
+            // BWHY is clone() necessary here?
+            for (i, c) in inner.clone().enumerate() {
+                let (row, col) = if cols_first { (c, r) } else { (r, c) };
+
+                let x = grid[row][col];
+
+                // part 2 - inside
+                {
+                    let x_value = (x - b'0') as usize;
+                    inside_view[row][col] = i - last_seen_x_or_higher[x_value];
+                    for k in 0..=x_value {
+                        last_seen_x_or_higher[k] = i;
+                    }
+                }
+
+                // part 1 – outside
+                {
+                    outside_view[row][col] = max;
+                    if max == b'9' {
+                        continue;
+                    }
+                    if max < x {
+                        max = x;
+                    }
+                }
+            }
+        }
+        (outside_view, inside_view)
+    }
+
+    if let Ok(lines) = read_lines("assets/08.txt") {
+        for line in lines {
+            if let Ok(line) = line {
+                if line.is_empty() {
+                    continue;
+                }
+                grid.push(line.bytes().collect());
+            }
+        }
+
+        let num_rows = grid.len();
+        let num_cols = grid[0].len();
+
+        let views = vec![
+            // 0; left to right
+            walk_in_direction(&grid, 0..num_rows, 0..num_cols, num_rows, num_cols, false),
+            // 1; right to left
+            walk_in_direction(
+                &grid,
+                0..num_rows,
+                (0..num_cols).rev(),
+                num_rows,
+                num_cols,
+                false,
+            ),
+            // 2; top to bottom
+            walk_in_direction(&grid, 0..num_cols, 0..num_rows, num_rows, num_cols, true),
+            // 3; bottom to top
+            walk_in_direction(
+                &grid,
+                0..num_cols,
+                (0..num_rows).rev(),
+                num_rows,
+                num_cols,
+                true,
+            ),
+        ];
+
+        // part 2
+        {
+            let mut max: usize = 0;
+            for (r, row) in grid.iter().enumerate() {
+                for (c, _) in row.iter().enumerate() {
+                    let score = views.iter().fold(1, |acc, x| x.1[r][c] * acc);
+                    if score > max {
+                        max = score;
+                    }
+                }
+            }
+            println!("{max}");
+        }
+
+        // part 1
+        {
+            let mut visible: u32 = 0;
+            for (r, row) in grid.iter().enumerate() {
+                for (c, x) in row.iter().enumerate() {
+                    let x = *x;
+                    if x > views[0].0[r][c]
+                        || x > views[1].0[r][c]
+                        || x > views[2].0[r][c]
+                        || x > views[3].0[r][c]
+                    {
+                        visible += 1;
+                    }
+                }
+            }
+            println!("{visible}");
+        }
+    }
+}
 fn main() {
     println!("Hello, advent!");
 
+    p08();
     p07(true);
     p07(false);
     p06(true);
