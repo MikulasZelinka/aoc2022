@@ -622,9 +622,52 @@ fn p09(length: usize) {
         println!("{}", visited.len());
     }
 }
+
+fn p10() {
+    if let Ok(mut lines) = read_lines("assets/10.txt") {
+        let mut waiting = false;
+        let mut x = 1i32;
+        let mut buffer = 0i32;
+        let mut signal_strength = 0i32;
+
+        for cycle in 1..=240 {
+            if (x - ((cycle % 40) - 1)).abs() <= 1 {
+                print!("#");
+            } else {
+                print!(".");
+            }
+            if cycle % 40 == 0 {
+                println!();
+            }
+            if let 20 | 60 | 100 | 140 | 180 | 220 = cycle {
+                signal_strength += x * cycle;
+            }
+            if waiting {
+                x += buffer;
+                waiting = false;
+                continue;
+            }
+
+            let line = lines.next().unwrap().unwrap();
+            let mut line = line.split(" ");
+            let command = line.next().unwrap();
+            match command {
+                "noop" => continue,
+                "addx" => {
+                    waiting = true;
+                    buffer = line.next().unwrap().parse().unwrap();
+                }
+                _ => {}
+            }
+        }
+        println!("{}", signal_strength);
+    }
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p10();
     p09(10);
     p09(2);
     p08();
