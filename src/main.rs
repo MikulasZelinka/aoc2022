@@ -3,7 +3,8 @@ use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::str::{FromStr, Lines};
+use std::string::ParseError;
 
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -664,9 +665,215 @@ fn p10() {
     }
 }
 
+use lazy_static::lazy_static;
+use regex::Regex;
+
+fn p11() {
+    #[derive(Debug, PartialEq)]
+    struct Monkey {
+        id: usize,
+        items: VecDeque<usize>,
+        op: char,
+        arg: Option<usize>,
+        test_div_by: usize,
+        test_true_id: usize,
+        test_false_id: usize,
+        num_inspects: usize,
+    }
+
+    struct ItemThrow {
+        target: usize,
+        worry: usize,
+    }
+
+    impl Monkey {
+        fn catch(&mut self, item: usize) {
+            self.items.push_back(item);
+        }
+
+        fn inspect_and_throw(&mut self) -> Vec<ItemThrow> {
+            // for x in self.items.iter_mut() {
+            //     *x = match self.op {
+            //         '*' => (*x * self.arg.unwrap_or(*x)) / 3,
+            //         '+' => (*x + self.arg.unwrap_or(*x)) / 3,
+            //         _ => panic!(),
+            //     };
+            //     self.num_inspects += 1;
+            // }
+            let mut throws: Vec<ItemThrow> = Vec::new();
+
+            for x in self.items.drain(..) {
+                self.num_inspects += 1;
+
+                let mut worry = match self.op {
+                    '*' => x * self.arg.unwrap_or(x),
+                    '+' => x + self.arg.unwrap_or(x),
+                    _ => panic!(),
+                };
+                worry /= 3;
+
+                throws.push(ItemThrow {
+                    target: if worry % self.test_div_by == 0 {
+                        self.test_true_id
+                    } else {
+                        self.test_false_id
+                    },
+                    worry,
+                });
+            }
+            throws
+        }
+    }
+
+    fn get_next_last_number(lines: &mut Lines) -> usize {
+        lines
+            .next()
+            .unwrap()
+            .split(" ")
+            .last()
+            .unwrap()
+            .parse::<usize>()
+            .unwrap()
+    }
+    impl FromStr for Monkey {
+        type Err = ParseError;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            lazy_static! {
+                static ref RE_NUM: Regex = Regex::new(r"(\d+)").unwrap();
+            }
+
+            // Monkey 0:
+            // Starting items: 92, 73, 86, 83, 65, 51, 55, 93
+            // Operation: new = old * 5
+            // Test: divisible by 11
+            //   If true: throw to monkey 3
+            //   If false: throw to monkey 4
+
+            let mut lines = s.lines();
+
+            // Monkey 0:
+            let id: usize = RE_NUM
+                .find(lines.next().unwrap())
+                .unwrap()
+                .as_str()
+                .parse()
+                .unwrap();
+
+            // Starting items: 92, 73, 86, 83, 65, 51, 55, 93
+            let items: VecDeque<usize> = RE_NUM
+                .find_iter(lines.next().unwrap())
+                .map(|x| x.as_str().parse::<usize>().unwrap())
+                .collect();
+
+            // Operation: new = old * 5
+            let (op, arg): (char, Option<usize>) = {
+                let l: Vec<&str> = lines.next().unwrap().split(" ").collect();
+                let op = l[l.len() - 2].chars().next().unwrap();
+                let arg = l[l.len() - 1];
+
+                (
+                    op,
+                    match arg {
+                        "old" => None,
+                        _ => Some(arg.parse::<usize>().unwrap()),
+                    },
+                )
+            };
+
+            // Test: divisible by 11
+            let test_div = get_next_last_number(&mut lines);
+
+            //   If true: throw to monkey 3
+            let test_true_id: usize = get_next_last_number(&mut lines);
+
+            //   If false: throw to monkey 4
+            let test_false_id: usize = get_next_last_number(&mut lines);
+
+            Ok(Monkey {
+                id,
+                items,
+                op,
+                arg,
+                test_div_by: test_div,
+                test_true_id,
+                test_false_id,
+                num_inspects: 0,
+            })
+        }
+    }
+
+    let mut monkeys: Vec<Monkey> = vec![
+        // Monkey {
+        //     id: 0,
+        //     items: vec![92, 73, 86, 83, 65, 51, 55, 93],
+        //     // operation: |x| x * 5,
+        //     op: 'x',
+        //     arg: Some(5),
+        //     test_div_by: 11,
+        //     test_true_id: 3,
+        //     test_false_id: 4,
+        // }
+    ];
+
+    const NUM_ROUNDS: usize = 20;
+
+    let mut monkey_str = String::new();
+
+    let lines = read_lines("assets/11.txt").unwrap();
+    for line in lines {
+        if let Ok(line) = line {
+            if line.is_empty() {
+                monkeys.push(Monkey::from_str(&monkey_str).unwrap());
+                monkey_str.clear();
+                continue;
+            }
+            monkey_str.push_str(&line);
+            monkey_str.push('\n');
+        }
+    }
+    // create last monkey if there's not enough newlines at the end of the file
+    if !monkey_str.is_empty() {
+        monkeys.push(Monkey::from_str(&monkey_str).unwrap());
+        monkey_str.clear();
+    }
+    println!("{:?}", monkeys);
+
+    for _ in 0..NUM_ROUNDS {
+        // BHOW to do this when we can't borrow monkeys twice? is t he for i in range really necessary?
+        // for monkey in monkeys.iter_mut() {
+        //     let throws = monkey.inspect_and_throw();
+        //     for throw in throws {
+        //         monkeys[throw.target].catch(throw.worry);
+        //     }
+        // }
+        for i in 0..(&monkeys).len() {
+            let monkey = monkeys.get_mut(i).unwrap();
+            let throws = monkey.inspect_and_throw();
+            for throw in throws {
+                // BHOW do these two differ?
+                monkeys[throw.target].catch(throw.worry);
+                // monkeys.get_mut(throw.target).unwrap().catch(throw.worry);
+            }
+        }
+    }
+
+    let mut num_inspects = monkeys
+        .iter()
+        .map(|monkey| monkey.num_inspects)
+        .collect::<Vec<usize>>();
+    num_inspects.sort();
+
+    let monkey_business: usize =
+        num_inspects[num_inspects.len() - 1] * num_inspects[num_inspects.len() - 2];
+
+    println!("p11: {}", monkey_business);
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p11();
     p10();
     p09(10);
     p09(2);
