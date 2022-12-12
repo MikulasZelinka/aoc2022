@@ -712,6 +712,8 @@ fn p11(num_rounds: usize, worry_div: usize) {
                 };
 
                 worry /= worry_div;
+
+                // BWHY does this change output of part 1?
                 worry %= lcm;
 
                 throws.push(ItemThrow {
@@ -872,9 +874,99 @@ fn p11(num_rounds: usize, worry_div: usize) {
     println!("p11: {}", monkey_business);
 }
 
+fn p12(part_two: bool) {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    struct Position {
+        x: usize,
+        y: usize,
+    }
+
+    let mut start = Position { x: 0, y: 0 };
+    let mut end = Position { x: 0, y: 0 };
+    let mut heightmap: Vec<Vec<u8>> = vec![];
+
+    let mut all_starts: Vec<Position> = vec![];
+
+    let lines = read_lines("assets/12.txt").unwrap();
+    for (r, line) in lines.enumerate() {
+        if let Ok(line) = line {
+            if line.is_empty() {
+                continue;
+            }
+            let mut row: Vec<u8> = vec![];
+
+            for (c, x) in line.bytes().enumerate() {
+                let mut height = x;
+                if x == b'S' {
+                    start = Position { x: c, y: r };
+                    height = b'a';
+                } else if x == b'E' {
+                    end = Position { x: c, y: r };
+                    height = b'z';
+                }
+                if height == b'a' {
+                    all_starts.push(Position { x: c, y: r });
+                }
+                row.push(height);
+            }
+            heightmap.push(row);
+        }
+    }
+
+    let y_max = heightmap.len() - 1;
+    let x_max = heightmap[0].len() - 1;
+
+    let starts = if part_two { all_starts } else { vec![start] };
+    let mut best: usize = y_max * x_max;
+
+    for start in starts {
+        let mut visited: HashSet<Position> = HashSet::from([start]);
+        let mut q: VecDeque<Position> = VecDeque::from([start]);
+        let mut distances: HashMap<Position, usize> = HashMap::from([(start, 0)]);
+
+        while !q.is_empty() {
+            // p = previous, n = next
+            let p = q.pop_front().unwrap();
+
+            for n in [
+                Position {
+                    x: (p.x + 1).min(x_max),
+                    y: p.y,
+                },
+                Position {
+                    x: p.x,
+                    y: (p.y + 1).min(y_max),
+                },
+                Position {
+                    x: p.x.saturating_sub(1),
+                    y: p.y,
+                },
+                Position {
+                    x: p.x,
+                    y: p.y.saturating_sub(1),
+                },
+            ] {
+                if heightmap[n.y][n.x] > heightmap[p.y][p.x] + 1 || visited.contains(&n) {
+                    continue;
+                }
+                q.push_back(n);
+                visited.insert(n);
+                distances.insert(n, distances.get(&p).unwrap() + 1);
+                if n == end {
+                    best = best.min(*distances.get(&end).unwrap());
+                    break;
+                }
+            }
+        }
+    }
+    println!("{}", best);
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p12(true);
+    p12(false);
     p11(10_000, 1);
     p11(20, 3);
     p10();
