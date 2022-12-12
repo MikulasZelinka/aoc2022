@@ -668,7 +668,7 @@ fn p10() {
 use lazy_static::lazy_static;
 use regex::Regex;
 
-fn p11() {
+fn p11(num_rounds: usize, worry_div: usize) {
     #[derive(Debug, PartialEq)]
     struct Monkey {
         id: usize,
@@ -691,7 +691,7 @@ fn p11() {
             self.items.push_back(item);
         }
 
-        fn inspect_and_throw(&mut self) -> Vec<ItemThrow> {
+        fn inspect_and_throw(&mut self, worry_div: usize, lcm: usize) -> Vec<ItemThrow> {
             // for x in self.items.iter_mut() {
             //     *x = match self.op {
             //         '*' => (*x * self.arg.unwrap_or(*x)) / 3,
@@ -710,7 +710,9 @@ fn p11() {
                     '+' => x + self.arg.unwrap_or(x),
                     _ => panic!(),
                 };
-                worry /= 3;
+
+                worry /= worry_div;
+                worry %= lcm;
 
                 throws.push(ItemThrow {
                     target: if worry % self.test_div_by == 0 {
@@ -782,7 +784,7 @@ fn p11() {
             };
 
             // Test: divisible by 11
-            let test_div = get_next_last_number(&mut lines);
+            let test_div_by = get_next_last_number(&mut lines);
 
             //   If true: throw to monkey 3
             let test_true_id: usize = get_next_last_number(&mut lines);
@@ -795,7 +797,7 @@ fn p11() {
                 items,
                 op,
                 arg,
-                test_div_by: test_div,
+                test_div_by,
                 test_true_id,
                 test_false_id,
                 num_inspects: 0,
@@ -816,8 +818,6 @@ fn p11() {
         // }
     ];
 
-    const NUM_ROUNDS: usize = 20;
-
     let mut monkey_str = String::new();
 
     let lines = read_lines("assets/11.txt").unwrap();
@@ -837,9 +837,11 @@ fn p11() {
         monkeys.push(Monkey::from_str(&monkey_str).unwrap());
         monkey_str.clear();
     }
-    println!("{:?}", monkeys);
+    // println!("{:?}", monkeys);
 
-    for _ in 0..NUM_ROUNDS {
+    let lcm: usize = monkeys.iter().map(|x| x.test_div_by).product();
+
+    for _ in 0..num_rounds {
         // BHOW to do this when we can't borrow monkeys twice? is t he for i in range really necessary?
         // for monkey in monkeys.iter_mut() {
         //     let throws = monkey.inspect_and_throw();
@@ -849,7 +851,7 @@ fn p11() {
         // }
         for i in 0..(&monkeys).len() {
             let monkey = monkeys.get_mut(i).unwrap();
-            let throws = monkey.inspect_and_throw();
+            let throws = monkey.inspect_and_throw(worry_div, lcm);
             for throw in throws {
                 // BHOW do these two differ?
                 monkeys[throw.target].catch(throw.worry);
@@ -873,7 +875,8 @@ fn p11() {
 fn main() {
     println!("Hello, advent!");
 
-    p11();
+    p11(10_000, 1);
+    p11(20, 3);
     p10();
     p09(10);
     p09(2);
