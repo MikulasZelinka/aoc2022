@@ -917,49 +917,46 @@ fn p12(part_two: bool) {
     let x_max = heightmap[0].len() - 1;
 
     let starts = if part_two { all_starts } else { vec![start] };
-    let mut best: usize = y_max * x_max;
 
-    for start in starts {
-        let mut visited: HashSet<Position> = HashSet::from([start]);
-        let mut q: VecDeque<Position> = VecDeque::from([start]);
-        let mut distances: HashMap<Position, usize> = HashMap::from([(start, 0)]);
+    let mut visited: HashSet<Position> = HashSet::from_iter(starts.clone());
+    let mut q: VecDeque<Position> = VecDeque::from_iter(starts.clone());
+    let mut distances: HashMap<Position, usize> =
+        HashMap::from_iter(starts.iter().map(|x| (*x, 0)));
 
-        while !q.is_empty() {
-            // p = previous, n = next
-            let p = q.pop_front().unwrap();
+    while !q.is_empty() {
+        // p = previous, n = next
+        let p = q.pop_front().unwrap();
 
-            for n in [
-                Position {
-                    x: (p.x + 1).min(x_max),
-                    y: p.y,
-                },
-                Position {
-                    x: p.x,
-                    y: (p.y + 1).min(y_max),
-                },
-                Position {
-                    x: p.x.saturating_sub(1),
-                    y: p.y,
-                },
-                Position {
-                    x: p.x,
-                    y: p.y.saturating_sub(1),
-                },
-            ] {
-                if heightmap[n.y][n.x] > heightmap[p.y][p.x] + 1 || visited.contains(&n) {
-                    continue;
-                }
-                q.push_back(n);
-                visited.insert(n);
-                distances.insert(n, distances.get(&p).unwrap() + 1);
-                if n == end {
-                    best = best.min(*distances.get(&end).unwrap());
-                    break;
-                }
+        for n in [
+            Position {
+                x: (p.x + 1).min(x_max),
+                y: p.y,
+            },
+            Position {
+                x: p.x,
+                y: (p.y + 1).min(y_max),
+            },
+            Position {
+                x: p.x.saturating_sub(1),
+                y: p.y,
+            },
+            Position {
+                x: p.x,
+                y: p.y.saturating_sub(1),
+            },
+        ] {
+            if heightmap[n.y][n.x] > heightmap[p.y][p.x] + 1 || visited.contains(&n) {
+                continue;
+            }
+            q.push_back(n);
+            visited.insert(n);
+            distances.insert(n, distances.get(&p).unwrap() + 1);
+            if n == end {
+                println!("{}", distances.get(&end).unwrap());
+                return;
             }
         }
     }
-    println!("{}", best);
 }
 
 fn main() {
