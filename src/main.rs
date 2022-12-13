@@ -2,10 +2,12 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{self, BufRead};
+use std::iter::zip;
 use std::path::{Path, PathBuf};
 use std::str::{FromStr, Lines};
 use std::string::ParseError;
 
+use serde_json::Value;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -959,9 +961,112 @@ fn p12(part_two: bool) {
     }
 }
 
+fn p13() {
+    let mut lines = read_lines("assets/13.txt").unwrap();
+
+    lazy_static! {
+        static ref RE_NUM: Regex = Regex::new(r"(\d+)").unwrap();
+    }
+
+    let mut index: usize = 0;
+    let mut sum: usize = 0;
+
+    fn compare(left: Value, right: Value) -> Option<bool> {
+        // debugging watches
+        // let l_s = serde_json::to_string(&left).unwrap();
+        // let r_s = serde_json::to_string(&right).unwrap();
+
+        // let l_a = left.is_array();
+        // let r_a = right.is_array();
+
+        // let l_u = left.is_u64();
+        // let r_u = right.is_u64();
+
+        if left.is_array() && !right.is_array() {
+            return compare(left, Value::Array(vec![right]));
+        }
+        if !left.is_array() && right.is_array() {
+            return compare(Value::Array(vec![left]), right);
+        }
+        if left.is_array() && right.is_array() {
+            let left_a = left.as_array().unwrap();
+            let right_a = right.as_array().unwrap();
+
+            for (l, r) in zip(left_a.clone(), right_a.clone()) {
+                match compare(l, r) {
+                    None => {}
+                    Some(result) => return Some(result),
+                }
+            }
+            if left_a.len() > right_a.len() {
+                return Some(false);
+            } else if left_a.len() < right_a.len() {
+                return Some(true);
+            }
+            return None;
+        }
+
+        // both must be is_u64()
+        if left.as_u64().unwrap() < right.as_u64().unwrap() {
+            return Some(true);
+        } else if left.as_u64().unwrap() > right.as_u64().unwrap() {
+            return Some(false);
+        }
+        None
+    }
+
+    let mut packets: Vec<Value> = vec![];
+
+    loop {
+        index += 1;
+
+        let l1 = lines.next();
+        let l2 = lines.next();
+
+        lines.next();
+        if l1.is_none() || l2.is_none() {
+            break;
+        }
+        let l1 = l1.unwrap().unwrap();
+        let l2 = l2.unwrap().unwrap();
+
+        let l: Value = serde_json::from_str(&l1).unwrap();
+        let r: Value = serde_json::from_str(&l2).unwrap();
+
+        packets.push(l.clone());
+        packets.push(r.clone());
+
+        if compare(l, r).unwrap_or(true) {
+            sum += index;
+        }
+    }
+
+    let divider1: Value = serde_json::from_str("[[2]]").unwrap();
+    let divider2: Value = serde_json::from_str("[[6]]").unwrap();
+
+    // BWHY is all this cloning necessary, is there a better way if Value doesn't have Copy?
+    let num_smaller1 = packets
+        .iter()
+        .cloned()
+        .filter(|x| compare(x.clone(), divider1.clone()).unwrap_or(true))
+        .count();
+    let num_smaller2 = packets
+        .iter()
+        .cloned()
+        .filter(|x| compare(x.clone(), divider2.clone()).unwrap_or(true))
+        .count();
+
+    // part 2:
+    println!("{}", (num_smaller1 + 1) * (num_smaller2 + 2));
+
+    // part 1:
+    println!("{}", sum);
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p13();
     p12(true);
     p12(false);
     p11(10_000, 1);
