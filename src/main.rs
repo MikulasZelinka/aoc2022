@@ -1063,9 +1063,127 @@ fn p13() {
     println!("{}", sum);
 }
 
+fn p14(part_two: bool) {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    struct Position {
+        x: usize,
+        y: usize,
+    }
+
+    lazy_static! {
+        static ref RE_TWO_NUMS: Regex = Regex::new(r"(\d+),(\d+)").unwrap();
+    }
+
+    // let mut segments: HashSet<(Position, Position)> = HashSet::new();
+    let mut occupied: HashSet<Position> = HashSet::new();
+    let mut y_max: usize = 0;
+
+    for line in read_lines("assets/14.txt").unwrap().map(|x| x.unwrap()) {
+        if line.is_empty() {
+            continue;
+        }
+
+        let mut last_segment: Option<Position> = None;
+        for caps in RE_TWO_NUMS.captures_iter(&line) {
+            let current: Position = Position {
+                x: caps.get(1).unwrap().as_str().parse().unwrap(),
+                y: caps.get(2).unwrap().as_str().parse().unwrap(),
+            };
+
+            y_max = y_max.max(current.y);
+
+            if let Some(last) = last_segment {
+                // segments.insert((last, current));
+                let (from, to) = if last.x < current.x || last.y < current.y {
+                    (last, current)
+                } else {
+                    (current, last)
+                };
+                for x in from.x..=to.x {
+                    for y in from.y..=to.y {
+                        occupied.insert(Position { x, y });
+                    }
+                }
+            }
+            last_segment = Some(current);
+        }
+    }
+
+    if part_two {
+        // for x in 500 - y_max + 2..=500 + y_max + 2 {
+        for x in 0..=1000 {
+            occupied.insert(Position { x, y: y_max + 2 });
+        }
+    }
+
+    const START: Position = Position { x: 500, y: 0 };
+
+    // TODO: properly memorize last valid starting location
+    let mut last: Option<Position> = None;
+
+    let mut grains = 0;
+    'outer: loop {
+        let mut p = match last {
+            None => START,
+            // TODO: properly memorize last valid starting location
+            Some(_) => START,
+            // Some(last) => START,
+            // Some(last) => last,
+        };
+
+        loop {
+            if !part_two && p.y >= y_max {
+                break 'outer;
+            }
+
+            let space_left = !occupied.contains(&Position {
+                x: p.x - 1,
+                y: p.y + 1,
+            });
+            let space_down = !occupied.contains(&Position { x: p.x, y: p.y + 1 });
+            let space_right = !occupied.contains(&Position {
+                x: p.x + 1,
+                y: p.y + 1,
+            });
+
+            if (space_left && space_down)
+                || (space_left && space_right)
+                || (space_down && space_right)
+            {
+                // if we have at least two options, we can start here next time
+                last = Some(p);
+            }
+
+            if space_down {
+                p.y += 1;
+            } else if space_left {
+                p.x -= 1;
+                p.y += 1;
+            } else if space_right {
+                p.x += 1;
+                p.y += 1;
+            } else {
+                // part 2
+                if part_two && occupied.contains(&p) {
+                    break 'outer;
+                }
+                occupied.insert(p);
+
+                break;
+            }
+        }
+        grains += 1;
+    }
+
+    // println!("{:?}", occupied);
+    println!("{}", grains);
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p14(true);
+    p14(false);
     p13();
     p12(true);
     p12(false);
