@@ -1118,18 +1118,16 @@ fn p14(part_two: bool) {
 
     const START: Position = Position { x: 500, y: 0 };
 
-    // TODO: properly memorize last valid starting location
     let mut last: Option<Position> = None;
 
     let mut grains = 0;
     'outer: loop {
         let mut p = match last {
             None => START,
-            // TODO: properly memorize last valid starting location
-            Some(_) => START,
-            // Some(last) => START,
-            // Some(last) => last,
+            Some(last) => last,
         };
+
+        let mut found_last = false;
 
         loop {
             if !part_two && p.y >= y_max {
@@ -1146,10 +1144,11 @@ fn p14(part_two: bool) {
                 y: p.y + 1,
             });
 
-            if (space_left && space_down)
+            if !found_last && (space_left && space_down)
                 || (space_left && space_right)
                 || (space_down && space_right)
             {
+                found_last = true;
                 // if we have at least two options, we can start here next time
                 last = Some(p);
             }
@@ -1168,6 +1167,10 @@ fn p14(part_two: bool) {
                     break 'outer;
                 }
                 occupied.insert(p);
+
+                if !found_last {
+                    last = Some(START);
+                }
 
                 break;
             }
