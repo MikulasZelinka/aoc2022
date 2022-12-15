@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::str::{FromStr, Lines};
 use std::string::ParseError;
 
+use rust_lapper::{Interval, Lapper};
 use serde_json::Value;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -668,7 +669,7 @@ fn p10() {
 }
 
 use lazy_static::lazy_static;
-use regex::Regex;
+use regex::{Match, Regex};
 
 fn p11(num_rounds: usize, worry_div: usize) {
     #[derive(Debug, PartialEq)]
@@ -1188,9 +1189,86 @@ fn p14(part_two: bool) {
     );
 }
 
+fn p15() {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    struct Position {
+        x: u32,
+        y: u32,
+    }
+
+    impl Position {
+        fn distance(&self, other: Position) -> u32 {
+            self.x.abs_diff(other.x) + self.y.abs_diff(other.y)
+        }
+    }
+
+    fn i_to_u(x: i32) -> u32 {
+        // (x as i64 + ((u32::MAX / 2) as i64)) as u32
+        (x as i64 + (1_000_000_000 as i64)) as u32
+    }
+
+    fn cap_to_u(x: Option<Match>) -> u32 {
+        let x: i32 = x.unwrap().as_str().parse().unwrap();
+        i_to_u(x)
+    }
+
+    // let y_target = i_to_u(10i32);
+    let y_target = i_to_u(2000000i32);
+
+    lazy_static! {
+        static ref RE_TWO_NUMS: Regex =
+            Regex::new(r"x=([0-9-]+), y=([0-9-]+).+x=([0-9-]+), y=([0-9-]+)").unwrap();
+    }
+
+    let mut covered: Vec<Interval<u32, u8>> = vec![];
+    let mut beacons_x_covering: HashSet<u32> = HashSet::new();
+
+    for line in read_lines("assets/15.txt").unwrap().map(|x| x.unwrap()) {
+        if line.is_empty() {
+            continue;
+        }
+
+        let caps = RE_TWO_NUMS.captures(&line).unwrap();
+
+        let (sensor, beacon) = (
+            Position {
+                x: cap_to_u(caps.get(1)),
+                y: cap_to_u(caps.get(2)),
+            },
+            Position {
+                x: cap_to_u(caps.get(3)),
+                y: cap_to_u(caps.get(4)),
+            },
+        );
+
+        if beacon.y == y_target {
+            beacons_x_covering.insert(beacon.x);
+        }
+
+        let d = sensor.distance(beacon);
+        let y_diff = sensor.y.abs_diff(y_target);
+
+        if d < y_diff {
+            continue;
+        }
+
+        let spread = d - y_diff;
+        covered.push(Interval {
+            start: sensor.x - spread,
+            stop: sensor.x + spread + 1,
+            val: 0,
+        });
+    }
+    println!(
+        "{}",
+        Lapper::new(covered).cov() - beacons_x_covering.len() as u32
+    );
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p15();
     p14(true);
     p14(false);
     p13();
