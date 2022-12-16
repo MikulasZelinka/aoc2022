@@ -1189,7 +1189,7 @@ fn p14(part_two: bool) {
     );
 }
 
-fn p15() {
+fn p15(test: bool) {
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     struct Position {
         x: u32,
@@ -1207,13 +1207,27 @@ fn p15() {
         (x as i64 + (1_000_000_000 as i64)) as u32
     }
 
+    fn u_to_i(x: u32) -> i64 {
+        x as i64 - (1_000_000_000)
+    }
+
     fn cap_to_u(x: Option<Match>) -> u32 {
         let x: i32 = x.unwrap().as_str().parse().unwrap();
         i_to_u(x)
     }
 
-    // let y_target = i_to_u(10i32);
-    let y_target = i_to_u(2000000i32);
+    let y_target = if test {
+        i_to_u(10i32)
+    } else {
+        i_to_u(2000000i32)
+    };
+    let (x_min, y_min) = (i_to_u(0), i_to_u(0));
+
+    let (x_max, y_max) = if test {
+        (i_to_u(20), i_to_u(20))
+    } else {
+        (i_to_u(4000000), i_to_u(4000000))
+    };
 
     lazy_static! {
         static ref RE_TWO_NUMS: Regex =
@@ -1223,7 +1237,18 @@ fn p15() {
     let mut covered: Vec<Interval<u32, u8>> = vec![];
     let mut beacons_x_covering: HashSet<u32> = HashSet::new();
 
-    for line in read_lines("assets/15.txt").unwrap().map(|x| x.unwrap()) {
+    // part 2:
+    let mut candidates: HashSet<Position> = HashSet::new();
+    let mut distances: HashMap<Position, u32> = HashMap::new();
+
+    for line in read_lines(if test {
+        "assets/15_test.txt"
+    } else {
+        "assets/15.txt"
+    })
+    .unwrap()
+    .map(|x| x.unwrap())
+    {
         if line.is_empty() {
             continue;
         }
@@ -1246,6 +1271,31 @@ fn p15() {
         }
 
         let d = sensor.distance(beacon);
+        distances.insert(sensor, d);
+
+        // part 2
+        {
+            for x in 0..=d + 1 {
+                let y = d + 1 - x;
+                candidates.insert(Position {
+                    x: sensor.x + x,
+                    y: sensor.y + y,
+                });
+                candidates.insert(Position {
+                    x: sensor.x + x,
+                    y: sensor.y - y,
+                });
+                candidates.insert(Position {
+                    x: sensor.x - x,
+                    y: sensor.y + y,
+                });
+                candidates.insert(Position {
+                    x: sensor.x - x,
+                    y: sensor.y - y,
+                });
+            }
+        }
+
         let y_diff = sensor.y.abs_diff(y_target);
 
         if d < y_diff {
@@ -1259,16 +1309,38 @@ fn p15() {
             val: 0,
         });
     }
-    println!(
-        "{}",
-        Lapper::new(covered).cov() - beacons_x_covering.len() as u32
-    );
+
+    // part 2:
+    {
+        'outer: for c in candidates.iter() {
+            if c.x < x_min || c.y < y_min || c.x > x_max || c.y > y_max {
+                continue;
+            }
+            for (sensor, distance) in distances.iter() {
+                if c.distance(*sensor) <= *distance {
+                    continue 'outer;
+                }
+            }
+            let (x, y) = (u_to_i(c.x), u_to_i(c.y));
+            println!("{}", x * 4000000 + y);
+            break;
+        }
+    }
+
+    // part 1:
+    {
+        println!(
+            "{}",
+            Lapper::new(covered).cov() - beacons_x_covering.len() as u32
+        );
+    }
 }
 
 fn main() {
     println!("Hello, advent!");
 
-    p15();
+    // p15(false); // takes ~20 seconds in release
+    p15(true);
     p14(true);
     p14(false);
     p13();
