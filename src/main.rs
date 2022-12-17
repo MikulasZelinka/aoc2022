@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fs::File;
+use std::hash::Hash;
 use std::io::{self, BufRead};
 use std::iter::zip;
 use std::path::{Path, PathBuf};
@@ -1336,9 +1337,193 @@ fn p15(test: bool) {
     }
 }
 
+fn p16(test: bool) {
+    // struct Node<'a> {
+    type NodeID = u8;
+
+    struct Node {
+        // id: NodeID,
+        flow: u32,
+        // edges: Vec<&'a Node<'a>>,
+        edges: Vec<NodeID>,
+    }
+
+    // #[derive(Clone)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+    struct SearchState {
+        current_node: NodeID,
+        flow_per_round: u32,
+        to_open: Vec<bool>,
+        score: u32,
+        last_node: Option<NodeID>,
+        history: Vec<NodeID>,
+    }
+
+    type SearchHistory = (NodeID, u32, Vec<bool>, u32);
+
+    lazy_static! {
+        static ref RE_ROW: Regex =
+            Regex::new(r"Valve (..) has flow rate=(\d+); tunnels? leads? to valves? (.+)").unwrap();
+        static ref RE_VALVES: Regex = Regex::new(r"([A-Z][A-Z])").unwrap();
+    }
+
+    const MAX_ROUNDS: usize = 30;
+
+    let mut nodes: Vec<Node> = vec![];
+    let mut id_to_name: Vec<String> = vec![];
+    let mut name_to_id: HashMap<String, NodeID> = HashMap::new();
+    let mut to_open: Vec<bool> = vec![];
+    let mut edge_names: Vec<Vec<String>> = vec![];
+    let mut start: NodeID = 0;
+
+    for (i, line) in read_lines(if test {
+        "assets/16_test.txt"
+    } else {
+        "assets/16.txt"
+    })
+    .unwrap()
+    .map(|x| x.unwrap())
+    .enumerate()
+    {
+        let i = i as NodeID;
+        if line.is_empty() {
+            continue;
+        }
+
+        println!("line: {}", &line);
+        let caps = RE_ROW.captures(&line).unwrap();
+        let valve = caps.get(1).unwrap().as_str();
+        let flow: u32 = caps.get(2).unwrap().as_str().parse().unwrap();
+        let edges = caps.get(3).unwrap().as_str();
+
+        if valve == "AA" {
+            start = i;
+        }
+
+        id_to_name.push(valve.to_string());
+        name_to_id.insert(valve.to_string(), i);
+
+        to_open.push(if flow > 0 { true } else { false });
+
+        edge_names.push(
+            RE_VALVES
+                .captures_iter(edges)
+                .map(|x| x.get(1).unwrap().as_str().to_string())
+                .collect(),
+        );
+
+        // println!("{:?}", edges);
+
+        // println!();
+
+        nodes.push(Node {
+            flow,
+            edges: vec![],
+        });
+    }
+
+    for (i, node_edges) in edge_names.iter().enumerate() {
+        for edge_name in node_edges.iter() {
+            &nodes.get_mut(i).unwrap().edges.push(name_to_id[edge_name]);
+        }
+    }
+
+    let state = SearchState {
+        current_node: start,
+        flow_per_round: 0,
+        to_open: to_open.clone(),
+        score: 0,
+        last_node: None,
+        history: vec![],
+    };
+
+    let mut q_old: VecDeque<SearchState> = VecDeque::from([state]);
+    let mut states_visited: HashSet<SearchHistory> = HashSet::new();
+
+    for round in 1..=MAX_ROUNDS {
+        println!("Round {:02}", round);
+        println!("- queue init: {}", q_old.len());
+
+        let mut q_new: VecDeque<SearchState> = VecDeque::new();
+        for s in q_old.iter() {
+            let node = s.current_node;
+            let node_i = node as usize;
+
+            let mut s_new = s.clone();
+            s_new.score += s_new.flow_per_round;
+
+            // 1 - open:
+            if s_new.to_open[node_i] {
+                let mut s_new_open = s_new.clone();
+
+                s_new_open.to_open[node_i] = false;
+                s_new_open.flow_per_round += nodes[node_i].flow;
+                s_new_open.last_node = None;
+                s_new_open.history.push(node);
+                q_new.push_back(s_new_open);
+            }
+            // 2 - done opening, and thus also searching
+            else if s_new.to_open.iter().all(|x| *x == false) {
+                q_new.push_back(s_new);
+                continue;
+            }
+            // 3 - search
+            for next in nodes[node_i].edges.iter() {
+                if let Some(last) = s_new.last_node {
+                    if &last == next {
+                        continue;
+                    }
+                }
+                let mut s_new_next = s_new.clone();
+                s_new_next.last_node = Some(node);
+                s_new_next.current_node = *next;
+
+                let state_history = (
+                    s_new_next.current_node,
+                    s_new_next.flow_per_round,
+                    s_new_next.to_open.clone(),
+                    s_new_next.score,
+                );
+                // TODO: compare flow_ and score above
+
+                if !states_visited.contains(&state_history) {
+                    states_visited.insert(state_history);
+                    q_new.push_back(s_new_next);
+                }
+
+                // TODO: only add "next" if it is on a path to a "to_open" node
+            }
+        }
+
+        q_old = q_new;
+        println!("- queue  new: {}\n", q_old.len());
+        println!("- states met: {}\n", states_visited.len());
+    }
+
+    let best = q_old.iter().max_by_key(|x| x.score).unwrap();
+
+    // let mut h: Vec<String> = vec![];
+    // for x in best.history.iter() {
+    //     h.push(id_to_name[(*x) as usize].clone());
+    // }
+    println!(
+        "{}, history: {:?}",
+        best.score,
+        best.history
+            .iter()
+            .map(|x| id_to_name[(*x) as usize].clone())
+            .collect::<Vec<String>>()
+    );
+
+    println!("{}", best.score);
+    println!();
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    // p16(false); // takes ~27 seconds in release
+    // p16(true);
     // p15(false); // takes ~20 seconds in release
     p15(true);
     p14(true);
