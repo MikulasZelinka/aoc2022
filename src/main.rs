@@ -1360,7 +1360,7 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
         history: Vec<NodeID>,
     }
 
-    type StateHistory = (Vec<NodeID>, u32, Vec<bool>, u32);
+    type StateHistory = (Vec<NodeID>, Vec<bool>);
 
     #[derive(Clone)]
     struct StateDelta {
@@ -1396,7 +1396,7 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
             continue;
         }
 
-        println!("line: {}", &line);
+        // println!("line: {}", &line);
         let caps = RE_ROW.captures(&line).unwrap();
         let valve = caps.get(1).unwrap().as_str();
         let flow: u32 = caps.get(2).unwrap().as_str().parse().unwrap();
@@ -1430,9 +1430,65 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
 
     for (i, node_edges) in edge_names.iter().enumerate() {
         for edge_name in node_edges.iter() {
-            &nodes.get_mut(i).unwrap().edges.push(name_to_id[edge_name]);
+            // BWHY is the "let _" recommended?
+            let _ = &nodes.get_mut(i).unwrap().edges.push(name_to_id[edge_name]);
         }
     }
+
+    let num_nodes = nodes.len();
+    let mut distances: Vec<Vec<i32>> = vec![vec![0; num_nodes]; num_nodes];
+    for i in 0..nodes.len() {
+        for j in 0..i {
+            let mut distance = -1;
+
+            // BFS
+            {
+                let mut bfs_distances: HashMap<NodeID, i32> = HashMap::from([(i as NodeID, 0)]);
+                let mut visited: HashSet<NodeID> = HashSet::from([i as NodeID]);
+                let mut q: VecDeque<NodeID> = VecDeque::from([i as NodeID]);
+
+                'bfs: while !q.is_empty() {
+                    let from = q.pop_front().unwrap();
+
+                    for to in &nodes.get(i).unwrap().edges {
+                        if visited.contains(&to) {
+                            continue;
+                        }
+                        q.push_back(*to);
+                        visited.insert(*to);
+                        let d = bfs_distances.get(&from).unwrap() + 1;
+                        if *to == j as NodeID {
+                            distance = d;
+                            break 'bfs;
+                        }
+                        bfs_distances.insert(*to, d);
+                    }
+                }
+            }
+            distances[i][j] = distance;
+            distances[j][i] = distance;
+        }
+    }
+
+    // adapted from https://stackoverflow.com/questions/70050040/fast-idiomatic-floyd-warshall-algorithm-in-rust
+    fn floyd_warshall(dist: &mut Vec<Vec<i32>>) {
+        let n = dist.len();
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..n {
+                    if dist[j][i] < 0 || dist[i][k] < 0 {
+                        // infinite distance, don't use it
+                        continue;
+                    } else if dist[j][k] < 0 {
+                        // always override if we had infinite before
+                        dist[j][k] = i32::MAX;
+                    }
+                    dist[j][k] = std::cmp::min(dist[j][k], dist[j][i] + dist[i][k]);
+                }
+            }
+        }
+    }
+    floyd_warshall(&mut distances);
 
     let state = SearchState {
         current_node: vec![start; num_explorers],
@@ -1443,25 +1499,55 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
         history: vec![],
     };
 
-    let mut q_old: VecDeque<SearchState> = VecDeque::from([state]);
-    let mut states_visited: HashSet<StateHistory> = HashSet::new();
+    let mut q_old: Vec<SearchState> = Vec::from([state]);
+    let mut states_visited: HashMap<StateHistory, u32> = HashMap::new();
+
+    fn expected_total_score(
+        score: u32,
+        flow_per_round: u32,
+        num_rounds: usize,
+        round: usize,
+    ) -> u32 {
+        score + (flow_per_round * (num_rounds - round) as u32)
+    }
+
+    const MAX_QUEUE_SIZE: usize = 1_000;
 
     for round in 1..=num_rounds {
-        println!("Round {:02}", round);
-        println!("- queue init: {}", q_old.len());
+        // println!("Round {:02}", round);
+        // println!("- queue init: {}", q_old.len());
 
-        let mut q_new: VecDeque<SearchState> = VecDeque::new();
+        let mut q_new: Vec<SearchState> = Vec::new();
+        // let mut distance_skips: u32 = 0;
+        // let mut distance_conts: u32 = 0;
+
+        // TODO - ugly hack, just keep the MAX_QUEUE_SIZE most promising
+        // otherwise, the queue_size explodes to 10s of millions in p2, real input
+        // and keeping just the best 1_000 seemed to work just fine ¯\_(ツ)_/¯
+        if q_old.len() > MAX_QUEUE_SIZE {
+            q_old.sort_unstable_by_key(|x| {
+                u32::MAX - expected_total_score(x.score, x.flow_per_round, num_rounds, round)
+            });
+            q_old.truncate(MAX_QUEUE_SIZE);
+        }
+
         for s in q_old.iter() {
             let mut s_new = s.clone();
             s_new.score += s_new.flow_per_round;
 
             // 1 - done opening, and thus also searching
             if s_new.to_open.iter().all(|x| *x == false) {
-                q_new.push_back(s_new);
+                q_new.push(s_new);
                 continue;
             }
 
-            // let mut explorer_deltas: Vec<Vec<StateDelta>> = vec![vec![]; num_explorers];
+            let to_open_list = s_new
+                .to_open
+                .iter()
+                .enumerate()
+                .filter_map(|(index, &r)| (r == true).then(|| index))
+                .collect::<Vec<_>>();
+
             let mut explorer_deltas: Vec<Vec<StateDelta>> = vec![];
 
             for (i_exp, node) in s_new.current_node.iter().enumerate() {
@@ -1477,13 +1563,8 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
                         last_node: None,
                         newly_opened: Some(node),
                     });
-
-                    // s_new_open.to_open[node_i] = false;
-                    // s_new_open.flow_per_round += nodes[node_i].flow;
-                    // s_new_open.last_node[node_i] = None;
-                    // s_new_open.history.push(node);
-                    // q_new.push_back(s_new_open);
                 }
+
                 // 3 - search
                 for next in nodes[node_i].edges.iter() {
                     if let Some(last) = s_new.last_node[i_exp] {
@@ -1492,15 +1573,29 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
                         }
                     }
 
+                    let mut gets_closer_to_opening = false;
+
+                    // BHOW to dereference inline in the for ..iter()?
+                    for next_to_open in to_open_list.iter() {
+                        if distances[*next as usize][*next_to_open]
+                            < distances[node_i][*next_to_open]
+                        {
+                            gets_closer_to_opening = true;
+
+                            break;
+                        }
+                    }
+                    if !gets_closer_to_opening {
+                        // distance_skips += 1;
+                        continue;
+                    }
+                    // distance_conts += 1;
+
                     q_node.push(StateDelta {
                         new_node: Some(*next),
                         last_node: Some(node),
                         newly_opened: None,
                     });
-
-                    // TODO: compare flow_ and score above
-
-                    // TODO: only add "next" if it is on a path to a "to_open" node
                 }
                 explorer_deltas.push(q_node)
             }
@@ -1536,21 +1631,35 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
                 // the order of explorers doesn't matter, and we sort them for better deduplication
                 let state_history: StateHistory = (
                     sorted(s_new_combined.current_node.clone()).collect(),
-                    s_new_combined.flow_per_round,
                     s_new_combined.to_open.clone(),
-                    s_new_combined.score,
                 );
 
-                if !states_visited.contains(&state_history) {
-                    states_visited.insert(state_history);
-                    q_new.push_back(s_new_combined);
+                let (s_fpr, s_score) = (s_new_combined.flow_per_round, s_new_combined.score);
+
+                let s_total = expected_total_score(s_score, s_fpr, num_rounds, round);
+
+                // BHOW to simplify this?
+                match states_visited.get(&state_history) {
+                    Some(&old_total) => {
+                        if old_total >= s_total {
+                            continue;
+                        }
+                    }
+                    None => {}
                 }
+
+                states_visited.insert(state_history, s_total);
+
+                q_new.push(s_new_combined);
             }
         }
 
         q_old = q_new;
-        println!("- queue  new: {}\n", q_old.len());
-        println!("- states met: {}\n", states_visited.len());
+        // println!("- queue  new: {}", q_old.len());
+        // println!("- states met: {}", states_visited.len());
+        // println!("- dist skips: {}", distance_skips);
+        // println!("- dist conts: {}", distance_conts);
+        // println!();
     }
 
     let best = q_old.iter().max_by_key(|x| x.score).unwrap();
@@ -1563,9 +1672,6 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
             .map(|x| id_to_name[(*x) as usize].clone())
             .collect::<Vec<String>>()
     );
-
-    println!("{}", best.score);
-    println!();
 }
 
 fn main() {
@@ -1573,8 +1679,8 @@ fn main() {
 
     // p16(26, 2, false);
     p16(26, 2, true);
-    // p16(30, 1, false); // takes ~27 seconds in release
-    // p16(30, 1, true);
+    // p16(30, 1, false);
+    p16(30, 1, true);
     // p15(false); // takes ~20 seconds in release
     p15(true);
     p14(true);
