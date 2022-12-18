@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::str::{FromStr, Lines};
 use std::string::ParseError;
 
+use itertools::{sorted, Itertools};
 use rust_lapper::{Interval, Lapper};
 use serde_json::Value;
 use strum::IntoEnumIterator;
@@ -1337,7 +1338,7 @@ fn p15(test: bool) {
     }
 }
 
-fn p16(test: bool) {
+fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
     // struct Node<'a> {
     type NodeID = u8;
 
@@ -1351,23 +1352,28 @@ fn p16(test: bool) {
     // #[derive(Clone)]
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     struct SearchState {
-        current_node: NodeID,
+        current_node: Vec<NodeID>,
         flow_per_round: u32,
         to_open: Vec<bool>,
         score: u32,
-        last_node: Option<NodeID>,
+        last_node: Vec<Option<NodeID>>,
         history: Vec<NodeID>,
     }
 
-    type SearchHistory = (NodeID, u32, Vec<bool>, u32);
+    type StateHistory = (Vec<NodeID>, u32, Vec<bool>, u32);
+
+    #[derive(Clone)]
+    struct StateDelta {
+        new_node: Option<NodeID>,
+        last_node: Option<NodeID>,
+        newly_opened: Option<NodeID>,
+    }
 
     lazy_static! {
         static ref RE_ROW: Regex =
             Regex::new(r"Valve (..) has flow rate=(\d+); tunnels? leads? to valves? (.+)").unwrap();
         static ref RE_VALVES: Regex = Regex::new(r"([A-Z][A-Z])").unwrap();
     }
-
-    const MAX_ROUNDS: usize = 30;
 
     let mut nodes: Vec<Node> = vec![];
     let mut id_to_name: Vec<String> = vec![];
@@ -1429,69 +1435,116 @@ fn p16(test: bool) {
     }
 
     let state = SearchState {
-        current_node: start,
+        current_node: vec![start; num_explorers],
         flow_per_round: 0,
         to_open: to_open.clone(),
         score: 0,
-        last_node: None,
+        last_node: vec![None; num_explorers],
         history: vec![],
     };
 
     let mut q_old: VecDeque<SearchState> = VecDeque::from([state]);
-    let mut states_visited: HashSet<SearchHistory> = HashSet::new();
+    let mut states_visited: HashSet<StateHistory> = HashSet::new();
 
-    for round in 1..=MAX_ROUNDS {
+    for round in 1..=num_rounds {
         println!("Round {:02}", round);
         println!("- queue init: {}", q_old.len());
 
         let mut q_new: VecDeque<SearchState> = VecDeque::new();
         for s in q_old.iter() {
-            let node = s.current_node;
-            let node_i = node as usize;
-
             let mut s_new = s.clone();
             s_new.score += s_new.flow_per_round;
 
-            // 1 - open:
-            if s_new.to_open[node_i] {
-                let mut s_new_open = s_new.clone();
-
-                s_new_open.to_open[node_i] = false;
-                s_new_open.flow_per_round += nodes[node_i].flow;
-                s_new_open.last_node = None;
-                s_new_open.history.push(node);
-                q_new.push_back(s_new_open);
-            }
-            // 2 - done opening, and thus also searching
-            else if s_new.to_open.iter().all(|x| *x == false) {
+            // 1 - done opening, and thus also searching
+            if s_new.to_open.iter().all(|x| *x == false) {
                 q_new.push_back(s_new);
                 continue;
             }
-            // 3 - search
-            for next in nodes[node_i].edges.iter() {
-                if let Some(last) = s_new.last_node {
-                    if &last == next {
-                        continue;
+
+            // let mut explorer_deltas: Vec<Vec<StateDelta>> = vec![vec![]; num_explorers];
+            let mut explorer_deltas: Vec<Vec<StateDelta>> = vec![];
+
+            for (i_exp, node) in s_new.current_node.iter().enumerate() {
+                let node = *node;
+                let node_i = node as usize;
+
+                let mut q_node: Vec<StateDelta> = vec![];
+
+                // 2 - open:
+                if s_new.to_open[node_i] {
+                    q_node.push(StateDelta {
+                        new_node: None,
+                        last_node: None,
+                        newly_opened: Some(node),
+                    });
+
+                    // s_new_open.to_open[node_i] = false;
+                    // s_new_open.flow_per_round += nodes[node_i].flow;
+                    // s_new_open.last_node[node_i] = None;
+                    // s_new_open.history.push(node);
+                    // q_new.push_back(s_new_open);
+                }
+                // 3 - search
+                for next in nodes[node_i].edges.iter() {
+                    if let Some(last) = s_new.last_node[i_exp] {
+                        if &last == next {
+                            continue;
+                        }
+                    }
+
+                    q_node.push(StateDelta {
+                        new_node: Some(*next),
+                        last_node: Some(node),
+                        newly_opened: None,
+                    });
+
+                    // TODO: compare flow_ and score above
+
+                    // TODO: only add "next" if it is on a path to a "to_open" node
+                }
+                explorer_deltas.push(q_node)
+            }
+
+            let state_delta_combinations = explorer_deltas.iter().multi_cartesian_product();
+            for state_deltas in state_delta_combinations {
+                let newly_opened: Vec<NodeID> = state_deltas
+                    .iter()
+                    .filter_map(|&x| x.newly_opened)
+                    .collect();
+                // if has duplicates, skip - each node can only be opened by one explorer
+                if newly_opened.len() > HashSet::<&NodeID>::from_iter(newly_opened.iter()).len() {
+                    continue;
+                }
+
+                let mut s_new_combined = s_new.clone();
+                for (i, state_delta) in state_deltas.iter().enumerate() {
+                    // update current node if relevant
+                    if let Some(new) = state_delta.new_node {
+                        s_new_combined.current_node[i] = new;
+                    }
+                    // update last node always
+                    s_new_combined.last_node[i] = state_delta.last_node;
+
+                    // handle newly opened completely
+                    if let Some(opened) = state_delta.newly_opened {
+                        s_new_combined.to_open[opened as usize] = false;
+                        s_new_combined.flow_per_round += nodes[opened as usize].flow;
+                        s_new_combined.history.push(opened);
                     }
                 }
-                let mut s_new_next = s_new.clone();
-                s_new_next.last_node = Some(node);
-                s_new_next.current_node = *next;
 
-                let state_history = (
-                    s_new_next.current_node,
-                    s_new_next.flow_per_round,
-                    s_new_next.to_open.clone(),
-                    s_new_next.score,
+                // the order of explorers doesn't matter, and we sort them for better deduplication
+                let state_history: StateHistory = (
+                    sorted(s_new_combined.current_node.clone()).collect(),
+                    s_new_combined.flow_per_round,
+                    s_new_combined.to_open.clone(),
+                    s_new_combined.score,
                 );
-                // TODO: compare flow_ and score above
 
                 if !states_visited.contains(&state_history) {
                     states_visited.insert(state_history);
-                    q_new.push_back(s_new_next);
+                    q_new.push_back(s_new_combined);
                 }
-
-                // TODO: only add "next" if it is on a path to a "to_open" node
             }
         }
 
@@ -1502,10 +1555,6 @@ fn p16(test: bool) {
 
     let best = q_old.iter().max_by_key(|x| x.score).unwrap();
 
-    // let mut h: Vec<String> = vec![];
-    // for x in best.history.iter() {
-    //     h.push(id_to_name[(*x) as usize].clone());
-    // }
     println!(
         "{}, history: {:?}",
         best.score,
@@ -1522,8 +1571,10 @@ fn p16(test: bool) {
 fn main() {
     println!("Hello, advent!");
 
-    // p16(false); // takes ~27 seconds in release
-    // p16(true);
+    // p16(26, 2, false);
+    p16(26, 2, true);
+    // p16(30, 1, false); // takes ~27 seconds in release
+    // p16(30, 1, true);
     // p15(false); // takes ~20 seconds in release
     p15(true);
     p14(true);
