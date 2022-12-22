@@ -1674,9 +1674,170 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
     );
 }
 
+fn p17(test: bool, num_rocks: u64) {
+    // enum Rock {
+    //     Line,
+    //     Plus,
+    //     L,
+    //     I,
+    //     Square,
+    // }
+
+    const EMPTY: u8 = 0b00000000;
+    const FULL: u8 = 0b11111110;
+    const LEFT: u8 = 0b10000000;
+    const RIGHT: u8 = 0b00000010;
+
+    const ROCK_HEIGHT: usize = 4;
+    type ROCK = [u8; ROCK_HEIGHT];
+
+    const NUM_ROCKS: usize = 5;
+    #[rustfmt::skip]
+    const ROCKS: [ROCK; NUM_ROCKS] = [
+        // empty, empty, <shape * 5>, empty
+        [0b00111100, EMPTY, EMPTY, EMPTY],
+        [
+            0b00010000,
+            0b00111000,
+            0b00010000, EMPTY
+        ],
+        [
+            0b00111000,
+            0b00001000,
+            0b00001000, EMPTY
+        ],
+        [
+            0b00100000,
+            0b00100000,
+            0b00100000,
+            0b00100000
+        ],
+        [
+            0b00110000,
+            0b00110000, EMPTY, EMPTY
+        ],
+    ];
+
+    const ROCK_HEIGHTS: [usize; NUM_ROCKS] = [1, 3, 3, 4, 2];
+
+    const VERTICAL_SPACING: usize = 3;
+
+    fn shift(x: u8, dx: i8) -> u8 {
+        if dx > 0 {
+            x >> dx
+        } else if dx < 0 {
+            x << -dx
+        } else {
+            x
+        }
+    }
+
+    fn next_to_wall(rock: &ROCK, dx: i8, side: u8) -> bool {
+        rock.iter().any(|x| shift(*x, dx) & side > 0)
+    }
+
+    fn collides(rock: &ROCK, dx: i8, chamber: &[u8]) -> bool {
+        rock.iter()
+            .zip_eq(chamber)
+            .any(|(x, y)| shift(*x, dx) & y > 0)
+    }
+
+    // fn push(rock: &mut ROCK, left: bool) {
+    //     for row in rock.iter_mut() {
+    //         *row = if left { *row << 1 } else { *row >> 1 }
+    //     }
+    // }
+
+    let mut rocks = ROCKS.iter().cycle();
+    let mut rock_heights = ROCK_HEIGHTS.iter().cycle();
+
+    // BWHY do we need to have two assignments here (input and moves)?
+    let input = read_lines(if test {
+        "assets/17_test.txt"
+    } else {
+        "assets/17.txt"
+    })
+    .unwrap()
+    .next()
+    .unwrap()
+    .unwrap();
+
+    let mut moves = input.bytes().cycle();
+
+    let mut tower_height: usize = 1;
+
+    // let mut chamber: Vec<u8> = vec![EMPTY; ROCK_HEIGHT - 1];
+    let mut chamber: Vec<u8> = vec![FULL];
+    // chamber.push(FULL);
+
+    for _k in 1..=num_rocks {
+        let rock: &ROCK = rocks.next().unwrap();
+        let height = *rock_heights.next().unwrap();
+        // let mut height: usize = rock.map(|x| (x & 1) as usize).iter().sum();
+
+        // currently, add between [3+1=4 and 3+4=7] + 1 (for checking by raising the whole chamber);
+        // let height_to_add = VERTICAL_SPACING + height + 1;
+
+        // base + last top + space
+        let mut current_piece_base = tower_height + VERTICAL_SPACING;
+
+        let ceiling = current_piece_base + ROCK_HEIGHT;
+        if chamber.len() < ceiling {
+            chamber.extend(vec![EMPTY; ceiling - chamber.len()]);
+        }
+
+        let mut dx = 0;
+        loop {
+            let (from, to) = (current_piece_base, current_piece_base + ROCK_HEIGHT);
+
+            // wind
+            match moves.next().unwrap() {
+                b'<' => {
+                    if !next_to_wall(&rock, dx, LEFT)
+                        && !collides(&rock, dx - 1, &chamber[from..to])
+                    {
+                        dx -= 1;
+                    }
+                }
+                b'>' => {
+                    if !next_to_wall(&rock, dx, RIGHT)
+                        && !collides(&rock, dx + 1, &chamber[from..to])
+                    {
+                        dx += 1;
+                    }
+                }
+                _ => panic!(),
+            }
+
+            // fall
+            if collides(&rock, dx, &chamber[from - 1..to - 1]) {
+                for (rock_i, j) in (from..to).enumerate() {
+                    chamber[j] |= shift(rock[rock_i], dx);
+                }
+                tower_height = tower_height.max(from + height);
+
+                // debug print:
+                // println!("{}", k);
+                // for row in chamber.iter().rev() {
+                //     println!("{:08b}", *row);
+                // }
+                // println!();
+
+                break;
+            }
+            current_piece_base -= 1;
+        }
+    }
+    println!("height: {}", tower_height - 1);
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    // p17(true, 2022);
+    // p17(true, 1000000000000);
+    p17(true, 2022);
+    // p17(true, 4);
     // p16(26, 2, false);
     p16(26, 2, true);
     // p16(30, 1, false);
