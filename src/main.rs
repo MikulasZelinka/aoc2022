@@ -1675,14 +1675,6 @@ fn p16(num_rounds: usize, num_explorers: usize, test: bool) {
 }
 
 fn p17(test: bool, num_rocks: u64) {
-    // enum Rock {
-    //     Line,
-    //     Plus,
-    //     L,
-    //     I,
-    //     Square,
-    // }
-
     const EMPTY: u8 = 0b00000000;
     const FULL: u8 = 0b11111110;
     const LEFT: u8 = 0b10000000;
@@ -1742,12 +1734,6 @@ fn p17(test: bool, num_rocks: u64) {
             .any(|(x, y)| shift(*x, dx) & y > 0)
     }
 
-    // fn push(rock: &mut ROCK, left: bool) {
-    //     for row in rock.iter_mut() {
-    //         *row = if left { *row << 1 } else { *row >> 1 }
-    //     }
-    // }
-
     let mut rocks = ROCKS.iter().cycle();
     let mut rock_heights = ROCK_HEIGHTS.iter().cycle();
 
@@ -1766,19 +1752,25 @@ fn p17(test: bool, num_rocks: u64) {
 
     let mut tower_height: usize = 1;
 
-    // let mut chamber: Vec<u8> = vec![EMPTY; ROCK_HEIGHT - 1];
     let mut chamber: Vec<u8> = vec![FULL];
-    // chamber.push(FULL);
 
-    for _k in 1..=num_rocks {
+    let mut cycle_i = 0;
+
+    type BlockDistances = [usize; 7];
+    type HeightRound = (u64, u64);
+
+    let mut states: HashMap<BlockDistances, HeightRound> = HashMap::new();
+
+    let mut found_cycle = false;
+    let mut rocks_left_after_cycle = 0;
+    let mut bonus_height_from_cycle = 0;
+
+    // for _k in tqdm!(1..=num_rocks) {
+    for rock_i in 1..=num_rocks {
         let rock: &ROCK = rocks.next().unwrap();
         let height = *rock_heights.next().unwrap();
         // let mut height: usize = rock.map(|x| (x & 1) as usize).iter().sum();
 
-        // currently, add between [3+1=4 and 3+4=7] + 1 (for checking by raising the whole chamber);
-        // let height_to_add = VERTICAL_SPACING + height + 1;
-
-        // base + last top + space
         let mut current_piece_base = tower_height + VERTICAL_SPACING;
 
         let ceiling = current_piece_base + ROCK_HEIGHT;
@@ -1789,6 +1781,50 @@ fn p17(test: bool, num_rocks: u64) {
         let mut dx = 0;
         loop {
             let (from, to) = (current_piece_base, current_piece_base + ROCK_HEIGHT);
+
+            if !found_cycle && cycle_i == input.len() {
+                cycle_i = 0;
+
+                let mut new_state: [usize; 7] = [0; 7];
+                for i in 0..7 {
+                    let mut spaces = 0;
+                    loop {
+                        let x = chamber[tower_height - spaces];
+
+                        if ((x >> (7 - i)) & 1) != 0 {
+                            new_state[i] = spaces;
+                            break;
+                        }
+                        spaces += 1;
+                    }
+                }
+                if let Some((state, (last_height, last_round))) = states.get_key_value(&new_state) {
+                    println!(
+                        "Match on {:?}, th: {}, round {}, h diff: {}, k diff: {}",
+                        state,
+                        tower_height,
+                        rock_i,
+                        tower_height as u64 - last_height,
+                        rock_i - last_round,
+                    );
+
+                    found_cycle = true;
+
+                    // TODO: this seems to give an almost correct answer
+                    // if "x" is correct, this also gave "x - 3" and "x - 2",
+                    // probably a single rock error
+                    let rock_cycle_length = rock_i - last_round;
+                    let rocks_left = num_rocks - rock_i;
+                    let rock_cycles_left = rocks_left / rock_cycle_length;
+                    rocks_left_after_cycle = rocks_left - (rock_cycles_left * rock_cycle_length);
+                    bonus_height_from_cycle =
+                        rock_cycles_left * (tower_height as u64 - last_height);
+                }
+
+                states.insert(new_state, (tower_height as u64, rock_i));
+            }
+
+            cycle_i += 1;
 
             // wind
             match moves.next().unwrap() {
@@ -1827,17 +1863,32 @@ fn p17(test: bool, num_rocks: u64) {
             }
             current_piece_base -= 1;
         }
+
+        if rocks_left_after_cycle == 1 {
+            break;
+        }
+        if rocks_left_after_cycle > 0 {
+            rocks_left_after_cycle -= 1;
+        }
     }
-    println!("height: {}", tower_height - 1);
+    println!(
+        "height: {}",
+        tower_height as u64 + bonus_height_from_cycle - 1
+    );
 }
 
 fn main() {
     println!("Hello, advent!");
 
-    // p17(true, 2022);
+    // {
+    //     // 1525364431487 is correct
+    //     // 1525364431488 is too high - it's a minor error based on the current rock height, I guess?
+    //     // 1525364431485 is too low
+    //     p17(false, 1000000000000);
+    // }
     // p17(true, 1000000000000);
-    p17(true, 2022);
-    // p17(true, 4);
+    p17(false, 2022);
+    // p17(true, 2022);
     // p16(26, 2, false);
     p16(26, 2, true);
     // p16(30, 1, false);
