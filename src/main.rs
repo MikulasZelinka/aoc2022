@@ -1877,9 +1877,97 @@ fn p17(test: bool, num_rocks: u64) {
     );
 }
 
+fn p18(test: bool) {
+    type Cube = (i32, i32, i32);
+
+    let mut cubes: Vec<Cube> = vec![];
+
+    for line in read_lines(if test {
+        "assets/18_test.txt"
+    } else {
+        "assets/18.txt"
+    })
+    .unwrap()
+    .map(|x| {
+        x.unwrap()
+            .split(',')
+            .map(|x| x.parse::<i32>().unwrap())
+            .collect_tuple::<Cube>()
+    })
+    .map(|x| x.unwrap())
+    {
+        cubes.push(line);
+    }
+    let cube_set: HashSet<&Cube> = HashSet::from_iter(cubes.iter());
+
+    let mut covered = 0;
+    let num_cubes = cubes.len();
+    for i in 0..num_cubes {
+        for j in i + 1..num_cubes {
+            let (c1, c2) = (cubes[i], cubes[j]);
+
+            if (c1.0 == c2.0 && c1.1 == c2.1 && c1.2.abs_diff(c2.2) == 1)
+                || (c1.0 == c2.0 && c1.2 == c2.2 && c1.1.abs_diff(c2.1) == 1)
+                || (c1.1 == c2.1 && c1.2 == c2.2 && c1.0.abs_diff(c2.0) == 1)
+            {
+                covered += 2;
+            }
+        }
+    }
+
+    let min_cube = (
+        cubes.iter().map(|x| x.0).min().unwrap() - 1,
+        cubes.iter().map(|x| x.1).min().unwrap() - 1,
+        cubes.iter().map(|x| x.2).min().unwrap() - 1,
+    );
+    let max_cube = (
+        cubes.iter().map(|x| x.0).max().unwrap() + 1,
+        cubes.iter().map(|x| x.1).max().unwrap() + 1,
+        cubes.iter().map(|x| x.2).max().unwrap() + 1,
+    );
+
+    let mut stack = vec![min_cube];
+    let mut visited = HashSet::from([min_cube]);
+    let mut outside = 0;
+    while let Some(last) = stack.pop() {
+        for next in [
+            (last.0 + 1, last.1, last.2),
+            (last.0 - 1, last.1, last.2),
+            (last.0, last.1 + 1, last.2),
+            (last.0, last.1 - 1, last.2),
+            (last.0, last.1, last.2 + 1),
+            (last.0, last.1, last.2 - 1),
+        ] {
+            if next.0 < min_cube.0
+                || next.1 < min_cube.1
+                || next.2 < min_cube.2
+                || next.0 > max_cube.0
+                || next.1 > max_cube.1
+                || next.2 > max_cube.2
+            {
+                continue;
+            }
+
+            if visited.contains(&next) {
+                continue;
+            }
+            if cube_set.contains(&next) {
+                outside += 1;
+                continue;
+            }
+            visited.insert(next);
+            stack.push(next);
+        }
+    }
+
+    println!("day 18, p1: {}, p2: {}", num_cubes * 6 - covered, outside,);
+}
+
 fn main() {
     println!("Hello, advent!");
 
+    p18(false);
+    p18(true);
     // {
     //     // 1525364431487 is correct
     //     // 1525364431488 is too high - it's a minor error based on the current rock height, I guess?
