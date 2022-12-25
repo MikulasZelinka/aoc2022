@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use std::str::{FromStr, Lines};
 use std::string::ParseError;
 
+use indicatif::ParallelProgressIterator;
 use itertools::{sorted, Itertools};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rust_lapper::{Interval, Lapper};
 use serde_json::Value;
 use strum::IntoEnumIterator;
@@ -1963,8 +1965,224 @@ fn p18(test: bool) {
     println!("day 18, p1: {}, p2: {}", num_cubes * 6 - covered, outside,);
 }
 
+fn p19(test: bool) {
+    // TODO: better abstraction with less duplication
+    // enum Resource {
+    //     Ore,
+    //     Clay,
+    //     Obsidian,
+    //     Geode,
+    // }
+
+    struct State {
+        ore: i32,
+        clay: i32,
+        obsidian: i32,
+        geode: i32,
+        ore_r: i32,
+        clay_r: i32,
+        obsidian_r: i32,
+        geode_r: i32,
+    }
+
+    impl State {
+        fn new() -> Self {
+            Self {
+                ore: 0,
+                clay: 0,
+                obsidian: 0,
+                geode: 0,
+                ore_r: 1,
+                clay_r: 0,
+                obsidian_r: 0,
+                geode_r: 0,
+            }
+        }
+
+        fn next(&self) -> Self {
+            Self {
+                ore: self.ore + self.ore_r,
+                clay: self.clay + self.clay_r,
+                obsidian: self.obsidian + self.obsidian_r,
+                geode: self.geode + self.geode_r,
+                ..*self
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Clone)]
+    struct Blueprint {
+        id: i32,
+        ore_ore: i32,
+        clay_ore: i32,
+        obsidian_ore: i32,
+        obsidian_clay: i32,
+        geode_ore: i32,
+        geode_obsidian: i32,
+    }
+
+    impl Blueprint {
+        fn new(line: &str) -> Self {
+            lazy_static! {
+                static ref RE_BLUEPRINT: Regex =
+                    Regex::new(r"Blueprint (?P<b>\d+): Each ore robot costs (?P<r_r>\d+) ore. Each clay robot costs (?P<c_r>\d+) ore. Each obsidian robot costs (?P<o_r>\d+) ore and (?P<o_c>\d+) clay. Each geode robot costs (?P<g_r>\d+) ore and (?P<g_o>\d+) obsidian.").unwrap();
+            }
+
+            println!("{line}");
+            let caps = RE_BLUEPRINT.captures_iter(line).next().unwrap();
+
+            Self {
+                id: caps["b"].parse().unwrap(),
+                ore_ore: caps["r_r"].parse().unwrap(),
+                clay_ore: caps["c_r"].parse().unwrap(),
+                obsidian_ore: caps["o_r"].parse().unwrap(),
+                obsidian_clay: caps["o_c"].parse().unwrap(),
+                geode_ore: caps["g_r"].parse().unwrap(),
+                geode_obsidian: caps["g_o"].parse().unwrap(),
+            }
+        }
+
+        fn quality(&self, state: State, mins_left: i32, could_have_bought: [bool; 4]) -> i32 {
+            let s = state.next();
+            if mins_left == 1 {
+                return s.geode;
+            }
+
+            // can't build more geode robots
+            {
+                if self.geode_obsidian >
+                // (state.obsidian + ((mins_left - 2) * state.obsidian_r))
+                 (state.obsidian + ((mins_left - 2) * (state.obsidian_r + mins_left - 2)))
+                {
+                    // println!("trigger in {}", mins_left);
+                    return state.geode + (state.geode_r * mins_left);
+                }
+            }
+
+            let can_build = (
+                state.ore >= self.ore_ore,
+                state.ore >= self.clay_ore,
+                state.ore >= self.obsidian_ore && state.clay >= self.obsidian_clay,
+                state.ore >= self.geode_ore && state.obsidian >= self.geode_obsidian,
+            );
+            match can_build {
+                (false, false, false, false) => self.quality(s, mins_left - 1, [false; 4]),
+
+                // always build last stage - geode - this is wrong
+                // (.., true) => self.quality(
+                //     State {
+                //         ore: s.geode - self.geode_ore,
+                //         obsidian: s.obsidian - self.geode_obsidian,
+                //         geode_r: s.geode_r + 1,
+                //         ..s
+                //     },
+                //     mins_left - 1,
+                //     [false; 4],
+                // ),
+                _ => {
+                    let mut options: Vec<i32> = vec![self.quality(
+                        state.next(),
+                        mins_left - 1,
+                        [can_build.0, can_build.1, can_build.2, can_build.3],
+                    )];
+                    // let mut options: Vec<i32> = vec![];
+                    if can_build.0 && !could_have_bought[0] {
+                        options.push(self.quality(
+                            State {
+                                ore: s.ore - self.ore_ore,
+                                ore_r: s.ore_r + 1,
+                                ..s
+                            },
+                            mins_left - 1,
+                            [false; 4],
+                        ))
+                    }
+                    if can_build.1 && !could_have_bought[1] {
+                        options.push(self.quality(
+                            State {
+                                ore: s.ore - self.clay_ore,
+                                clay_r: s.clay_r + 1,
+                                ..s
+                            },
+                            mins_left - 1,
+                            [false; 4],
+                        ))
+                    }
+                    if can_build.2 && !could_have_bought[2] {
+                        options.push(self.quality(
+                            State {
+                                ore: s.ore - self.obsidian_ore,
+                                clay: s.clay - self.obsidian_clay,
+                                obsidian_r: s.obsidian_r + 1,
+                                ..s
+                            },
+                            mins_left - 1,
+                            [false; 4],
+                        ))
+                    }
+                    if can_build.3 && !could_have_bought[3] {
+                        options.push(self.quality(
+                            State {
+                                ore: s.ore - self.geode_ore,
+                                obsidian: s.obsidian - self.geode_obsidian,
+                                geode_r: s.geode_r + 1,
+                                ..s
+                            },
+                            mins_left - 1,
+                            [false; 4],
+                        ))
+                    }
+
+                    *options.iter().max().unwrap()
+                }
+            }
+            // 10 * self.id
+        }
+    }
+
+    let blueprints = read_lines(if test {
+        "assets/19_test.txt"
+    } else {
+        "assets/19.txt"
+    })
+    .unwrap()
+    .map(|x| Blueprint::new(x.unwrap().as_str()))
+    .collect_vec();
+
+    println!("{:?}", blueprints);
+    let b2 = blueprints.clone();
+
+    let geodes = blueprints
+        .par_iter()
+        .progress_count(blueprints.len() as u64)
+        .map(|x| x.quality(State::new(), 24, [false; 4]))
+        .collect::<Vec<i32>>();
+    println!("{:?}", geodes);
+
+    println!(
+        "{:?}",
+        geodes
+            .iter()
+            .zip_eq(blueprints)
+            .map(|(g, b)| g * b.id)
+            .sum::<i32>()
+    );
+    println!();
+
+    let geodes = b2[..3.min(b2.len())]
+        .par_iter()
+        .progress_count(b2.len() as u64)
+        .map(|x| x.quality(State::new(), 32, [false; 4]))
+        .collect::<Vec<i32>>();
+    println!("{:?}, {}", geodes, geodes.iter().product::<i32>());
+}
+
 fn main() {
     println!("Hello, advent!");
+
+    p19(true);
+    p19(false);
+    return;
 
     p18(false);
     p18(true);
