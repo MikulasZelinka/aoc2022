@@ -2028,7 +2028,7 @@ fn p19(test: bool) {
                     Regex::new(r"Blueprint (?P<b>\d+): Each ore robot costs (?P<r_r>\d+) ore. Each clay robot costs (?P<c_r>\d+) ore. Each obsidian robot costs (?P<o_r>\d+) ore and (?P<o_c>\d+) clay. Each geode robot costs (?P<g_r>\d+) ore and (?P<g_o>\d+) obsidian.").unwrap();
             }
 
-            println!("{line}");
+            // println!("{line}");
             let caps = RE_BLUEPRINT.captures_iter(line).next().unwrap();
 
             Self {
@@ -2080,13 +2080,26 @@ fn p19(test: bool) {
                 //     [false; 4],
                 // ),
                 _ => {
-                    let mut options: Vec<i32> = vec![self.quality(
-                        state.next(),
-                        mins_left - 1,
-                        [can_build.0, can_build.1, can_build.2, can_build.3],
-                    )];
+                    let mut options: Vec<i32> = vec![];
+
+                    if !can_build.0 || !can_build.1 || !can_build.2 || !can_build.3 {
+                        options.push(self.quality(
+                            state.next(),
+                            mins_left - 1,
+                            [can_build.0, can_build.1, can_build.2, can_build.3],
+                        ));
+                    }
                     // let mut options: Vec<i32> = vec![];
-                    if can_build.0 && !could_have_bought[0] {
+                    if can_build.0
+                        && !could_have_bought[0]
+                        && ((self
+                            .ore_ore
+                            .max(self.clay_ore)
+                            .max(self.obsidian_ore)
+                            .max(self.geode_ore)
+                            * (mins_left - 1))
+                            >= (state.ore + state.ore_r * (mins_left - 1)))
+                    {
                         options.push(self.quality(
                             State {
                                 ore: s.ore - self.ore_ore,
@@ -2097,7 +2110,11 @@ fn p19(test: bool) {
                             [false; 4],
                         ))
                     }
-                    if can_build.1 && !could_have_bought[1] {
+                    if can_build.1
+                        && !could_have_bought[1]
+                        && ((self.obsidian_clay * (mins_left - 1))
+                            >= (state.clay + state.clay_r * (mins_left - 1)))
+                    {
                         options.push(self.quality(
                             State {
                                 ore: s.ore - self.clay_ore,
@@ -2108,7 +2125,11 @@ fn p19(test: bool) {
                             [false; 4],
                         ))
                     }
-                    if can_build.2 && !could_have_bought[2] {
+                    if can_build.2
+                        && !could_have_bought[2]
+                        && ((self.geode_obsidian * (mins_left - 1))
+                            >= (state.obsidian + state.obsidian_r * (mins_left - 1)))
+                    {
                         options.push(self.quality(
                             State {
                                 ore: s.ore - self.obsidian_ore,
@@ -2133,7 +2154,7 @@ fn p19(test: bool) {
                         ))
                     }
 
-                    *options.iter().max().unwrap()
+                    *options.iter().max().unwrap_or(&0)
                 }
             }
             // 10 * self.id
@@ -2149,7 +2170,7 @@ fn p19(test: bool) {
     .map(|x| Blueprint::new(x.unwrap().as_str()))
     .collect_vec();
 
-    println!("{:?}", blueprints);
+    // println!("{:?}", blueprints);
     let b2 = blueprints.clone();
 
     let geodes = blueprints
